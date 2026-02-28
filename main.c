@@ -1,131 +1,117 @@
 #define _GNU_SOURCE
+#define __USE_GNU
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
-#include <arpa/inet.h>
-#include <stdlib.h>
-#include <sys/socket.h>
-#include <string.h>
-#include <unistd.h>
-#include "scan.h"
-#include <getopt.h>
-#include <string.h>
-#include <stdio.h>
-#include <signal.h>
 #include "global.h"
-#include <sys/syscall.h>
+#include "mod.h"
+#include "scan.h"
+#include "version.h"
+#include <arpa/inet.h>
 #include <fcntl.h>
+#include <getopt.h>
+#include <net/ethernet.h>
+#include <net/if.h>
+#include <signal.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #define OPT_FILTER 1000
+#define BLOCK_SIZE (4096 * 16)
+#define FRAME_SIZE 2048
+#define BLOCK_NR 64
+
+struct priv {};
 
 volatile sig_atomic_t running = 1;
 
-struct filter_args
-{
-  char *ip;
-  char *dip;
-  int proto;
-  int targetport;
-};
-
-void parse_filter(const char *arg, struct filter_args *f)
-{
-  if (!arg) return;
-  char *tmp = strdup(arg);
-  char *tok = strtok(tmp, ",");
-  while (tok)
-  {
-      if (strncmp(tok, "ip=", 3) == 0) f->ip = strdup(tok + 3);
-      else if (strncmp(tok, "dip=", 4) == 0) f->dip = strdup(tok + 4);
-      else if (strncmp(tok, "proto=", 6) == 0) f->proto = atoi(tok + 6);
-      else if (strncmp(tok, "port=", 5) == 0) f->targetport = atoi(tok + 5);
-      tok = strtok(NULL, ",");
-    }
-  free(tmp);
+void handle_sigint(int sig) {
+  (void)sig;
+  running = 0;
 }
 
-int load_module(struct filter_args *f)
-{
-  int fd = open("filter.ko" , O_RDONLY);
-  if (fd < 0)
-  {
-    perror("Loading NetFilter Module");
-    return -1;
-  }
-  char params[256];
-  snprintf(params, sizeof(params), "ip=%s dip=%s targetport=%d proto=%d", 
-         f->ip ? f->ip : "", 
-         f->dip ? f->dip : "", 
-         f->targetport, 
-         f->proto);
-  if (syscall(SYS_finit_module , fd , params , 0) != 0)
-  {
-    perror("finit_module failed");
-    close(fd);
-    return -1;
-  }
-  printf("Loaded Module with: %s\n" , params);
-  close(fd);
-  return 0;
-}
-
-void unload_module()
-{
-  int ret = syscall(SYS_delete_module , "filter" , O_NONBLOCK);
-  if (ret != 0)
-  {
-    perror("delete_module");
-    fprintf(stderr , "Please Restart Your Device To Unload The Module");
-  }
-  printf("Unloaded Module\n");
-}
-
-void handle_sigint(int sig)
-{
-   (void)sig;
-   running = 0;
-}
-
-int main(int argc , char *argv[])
-{
+int main(int argc, char *argv[]) {
   char *filename = NULL;
   int module_loaded = 0;
-  struct option options[] = {
-    {"file" , no_argument , 0 , 'f'},
-    {"help" , no_argument , 0 , 'h'},
-    {"filter" , required_argument , 0 , OPT_FILTER},
-    {0,0,0,0}
-  };
+  char *interface = NULL;
+  int count = 0;
+  struct option options[] = {{"file", required_argument, 0, 'f'},
+                             {"help", no_argument, 0, 'h'},
+                             {"filter", required_argument, 0, OPT_FILTER},
+                             {"interface", required_argument, 0, 'i'},
+                             {"version" , no_argument , 0 , 'v'},
+                             {"count" , required_argument , 0 , 'c'},
+                             {0, 0, 0, 0}};
   int opt;
-  struct filter_args f = {0};
-  while ((opt = getopt_long(argc , argv , "f:h" , options , NULL)) != -1)
-  {
-    switch (opt)
-    {
-      case 'f':
-        filename = optarg;
+  while ((opt = getopt_long(argc, argv, "f:hi:c:", options, NULL)) != -1) {
+    switch (opt) {
+    case 'f':
+      filename = optarg;
+      break;
+    case OPT_FILTER:
+      struct filter_args args = { NULL , NULL , 0 , 0};
+      parse_filter_string(optarg, &args);
+      char *params = parse_filter(&args);
+      printf("params: %s" , params);
+      if (load_module(params) == 0)
+        module_loaded = 1;
+      free(args.ip);
+      free(args.dip);
+      break;
+    case 'i':
+      interface = optarg;
+      break;
+    case 'v':
+        printf("Version: %s\nBuild Date: %s\n" , APP_VERSION , BUILD_DATE);
         break;
-      case OPT_FILTER:
-        parse_filter(optarg, &f);
-        if (load_module(&f) == 0) module_loaded = 1;
+    case 'c':
+        count = atoi(optarg);
         break;
-      default:
-        fprintf(stderr ,  "Usage: %s [-f filename] [-filter targetport ip dip proto]\n" , argv[0]);
-        exit(EXIT_FAILURE);
+    default:
+      fprintf(stderr,
+              "Usage: %s [-f filename] [-filter \" targetport ip dip proto \"] [-i "
+              "interface name][--version][--count int]\n",
+              argv[0]);
+      exit(EXIT_FAILURE);
     }
   }
-  int fd  = socket(AF_PACKET , SOCK_RAW , htons(ETH_P_ALL));
-  if (fd < 0) return 1;
+  int fd = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
+  if (fd < 0)
+    return 1;
+  int version = TPACKET_V3;
+  if (setsockopt(fd, SOL_PACKET, PACKET_VERSION, &version, sizeof(version)) == -1)
+    perror("T3_PACKET_VERSION");
   struct tpacket_req3 req;
-    memset(&req, 0, sizeof(req));
-    req.tp_block_size = 4096 * 10;      
-    req.tp_frame_size = 2048;          
-    req.tp_block_nr = 100;            
-    req.tp_frame_nr = (req.tp_block_size * req.tp_block_nr) / req.tp_frame_size;
-    req.tp_retire_blk_tov = 60;      
-    req.tp_feature_req_word = TP_FT_REQ_FILL_RXHASH;
-  signal(SIGINT , handle_sigint);
-  scan(fd , req , filename);
-  if (module_loaded) unload_module();
+  memset(&req, 0, sizeof(req));
+  req.tp_block_size = BLOCK_SIZE;
+  req.tp_frame_size = FRAME_SIZE;
+  req.tp_block_nr = BLOCK_NR;
+  req.tp_frame_nr = (BLOCK_SIZE / FRAME_SIZE) * BLOCK_NR;
+  req.tp_retire_blk_tov = 60;
+  req.tp_sizeof_priv = TPACKET_ALIGN(sizeof(struct priv));
+  req.tp_feature_req_word = TP_FT_REQ_FILL_RXHASH;
+  if (setsockopt(fd, SOL_PACKET, PACKET_RX_RING, &req, sizeof(req)) ==  -1)
+    perror("Packet_RX_RING");
+  if (interface) {
+    struct sockaddr_ll sll;
+    struct ifreq ifr;
+    strncpy(ifr.ifr_name, interface, IFNAMSIZ);
+    if (ioctl(fd, SIOCGIFINDEX, &ifr) == -1)
+      perror("ioctl");
+    sll.sll_family = AF_PACKET;
+    sll.sll_ifindex = ifr.ifr_ifindex;
+    sll.sll_protocol = htons(ETH_P_ALL);
+    if (bind(fd, (struct sockaddr *)&sll, sizeof(sll)) == -1)
+      perror("bind");
+  }
+  signal(SIGINT, handle_sigint);
+  scan(fd, req, filename , count);
+  if (module_loaded == 1) {
+      unload_module();
+  }
   close(fd);
   return 0;
 }

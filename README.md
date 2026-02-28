@@ -15,15 +15,19 @@ Pscan is a Network Scanner That detects packets and can log them to a pcap file 
   ~~~
   make
   ~~~  
-  And export the binary
+  Or Install it system-wide with
   ~~~
-  export $PATH=$PATH:your/dir/pscan
+  sudo make install
   ~~~
-  # Notice
+  You can uninstall at any time with
+  ~~~
+  sudo make uninstall
+  ~~~
+# Notice
   You have to run this program with sudo or as root
   # Debugging 
   If the kernel module refused to unload , unload it like this
   ~~~
-   bash sudo rmmod filter
+   sudo rmmod filter
   ~~~
   or Restart

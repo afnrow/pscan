@@ -69,7 +69,7 @@ static unsigned int hook_fn(void *priv,struct sk_buff *skb, const struct nf_hook
 static int __init filter_init(void)
 {
     int ret;
-    if (ip) {
+    if (ip && strcmp(ip , "NULL") != 0) {
         if (in4_pton(ip, -1, (u8 *)&filter_ip, -1, NULL) <= 0)
         {
             printk(KERN_ERR "Invalid source IP\n");
@@ -77,7 +77,7 @@ static int __init filter_init(void)
         }
         printk(KERN_INFO "Blocking Source IP: %s\n", ip);
     }
-    if (dip)
+    if (dip && strcmp(ip , "NULL") != 0)
     {
         if (in4_pton(dip, -1, (u8 *)&filterd_ip, -1, NULL) <= 0)
         {
@@ -86,7 +86,8 @@ static int __init filter_init(void)
         }
         printk(KERN_INFO "Blocking Destination IP: %s\n", dip);
     }
-
+    printk(KERN_INFO "filter: loaded with targetport=%d proto=%d ip=%s dip=%s\n",
+           targetport, proto, ip ? ip : "NULL", dip ? dip : "NULL");
     nfho.hook = hook_fn;
     nfho.pf = PF_INET;
     nfho.hooknum = NF_INET_LOCAL_OUT;
