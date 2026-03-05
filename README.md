@@ -3,6 +3,7 @@ Pscan is a Network Scanner That detects packets and can log them to a pcap file 
 # Prerequisites
   * A Linux Device
   * Kernel Version >= 4.13
+  * Kernel Headers
   * C Compiler (e,g) gcc , clang
   * Make
 # Installation
@@ -34,10 +35,12 @@ Pscan is a Network Scanner That detects packets and can log them to a pcap file 
  ~~~
  You can also use the Netfilter , but disclamer it will block  the actual ip/port/protocol from your device , so you may be  logged out of the internet
  ~~~
- pscan --filter "targetport=10,ip=0.0.0.0,dip=0.0.0.0,proto=0"
+ pscan --filter "targetport=10,ip=0.0.0.0,dip=0.0.0.0,proto=0 startrange=50,endrange=55"
  ~~~
  dip = Destination ip
  proto = Protocol
+ startrange = Start of range to block ports
+ endrange = End of range to block ports
 # Notice
   You have to run this program with sudo or as root
   # Debugging 
