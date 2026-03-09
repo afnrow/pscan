@@ -5,6 +5,7 @@
 #include <string.h>
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
+#include "blue.h"
 #include "global.h"
 #include "mod.h"
 #include "scan.h"
@@ -43,6 +44,7 @@ int main(int argc, char *argv[]) {
                              {"filter", required_argument, 0, OPT_FILTER},
                              {"interface", required_argument, 0, 'i'},
                              {"version", no_argument, 0, 'v'},
+                             {"bluetooth", no_argument, 0, 'b'},
                              {"count", required_argument, 0, 'c'},
                              {0, 0, 0, 0}};
   int opt;
@@ -70,12 +72,15 @@ int main(int argc, char *argv[]) {
     case 'c':
       count = atoi(optarg);
       break;
+    case 'b':
+      scanbl();
+      break;
     default:
-      fprintf(
-          stderr,
-          "Usage: %s [-f filename] [-filter \" targetport ip dip proto startrange endrange\"] [-i "
-          "interface name][--version][--count int]\n",
-          argv[0]);
+      fprintf(stderr,
+              "Usage: %s [-f filename] [-filter \" targetport ip dip proto "
+              "startrange endrange\"] [-i "
+              "interface name][--version][--count int]\n",
+              argv[0]);
       exit(EXIT_FAILURE);
     }
   }

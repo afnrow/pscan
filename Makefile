@@ -3,7 +3,7 @@
 obj-m += filter.o
 
 USER_PROGRAM := pscan
-USER_SRCS := main.c scan.c global.c mod.c log.c
+USER_SRCS := main.c scan.c global.c mod.c log.c blue.c
 
 PWD := $(shell pwd)
 KDIR := /lib/modules/$(shell uname -r)/build
@@ -19,7 +19,7 @@ maybe_module:
 	fi
 
 $(USER_PROGRAM): $(USER_SRCS)
-	gcc -Wall -o $@ $(USER_SRCS)
+	gcc -Wall -o $@ $(USER_SRCS) -lbluetooth
 
 install: all
 	@echo "Installing $(USER_PROGRAM) to /usr/bin..."
